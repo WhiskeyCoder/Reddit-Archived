@@ -53,7 +53,7 @@ RedditViewer.Search = (function () {
         }
     }
 
-    function sortPosts(posts, sortBy, sortDir) {
+    function sortPosts(posts, sortBy, sortDir, duplicateGroups) {
         const dir = sortDir === 'asc' ? 1 : -1;
         const sorted = [...posts];
 
@@ -80,7 +80,32 @@ RedditViewer.Search = (function () {
             return cmp * dir;
         });
 
-        return sorted;
+        return clusterDuplicateGroups(sorted, duplicateGroups);
+    }
+
+    function clusterDuplicateGroups(sorted, duplicateGroups) {
+        if (!duplicateGroups?.size) return sorted;
+
+        const emitted = new Set();
+        const result = [];
+
+        for (const post of sorted) {
+            if (emitted.has(post)) continue;
+
+            const key = RedditViewer.Parser.getDuplicateKey(post);
+            if (key && duplicateGroups.has(key)) {
+                const members = sorted.filter((p) => RedditViewer.Parser.getDuplicateKey(p) === key);
+                for (const member of members) {
+                    result.push(member);
+                    emitted.add(member);
+                }
+            } else {
+                result.push(post);
+                emitted.add(post);
+            }
+        }
+
+        return result;
     }
 
     function filterPosts(posts, filters, state, duplicates) {
@@ -124,7 +149,7 @@ RedditViewer.Search = (function () {
         }
 
         if (filters.hideDuplicates) {
-            result = result.filter((p) => !p.url || !duplicates.has(p.url));
+            result = result.filter((p) => !RedditViewer.Parser.isDuplicatePost(p, duplicates));
         }
 
         return result;
