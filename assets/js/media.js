@@ -204,10 +204,8 @@ RedditViewer.Media = (function () {
             video.controls = true;
         });
 
-        container.querySelectorAll('.comment-body img').forEach((img) => {
-            img.addEventListener('click', () => {
-                RedditViewer.Gallery.openFullscreen([{ src: img.src, alt: img.alt || '' }], 0);
-            });
+        container.querySelectorAll('.comment-body video, .comment-media-video').forEach((video) => {
+            video.controls = true;
         });
     }
 
@@ -221,6 +219,7 @@ RedditViewer.Media = (function () {
 
     return {
         processMediaInMarkdown,
+        processVideoAndGifUrls,
         setupMediaViewers
     };
 })();
