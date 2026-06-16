@@ -1,7 +1,7 @@
-const CACHE_NAME = 'reddit-viewer-v2';
+const CACHE_NAME = 'reddit-viewer-v5';
 const ASSETS = [
     './',
-    './index.html',
+    './reddit-viewer.html',
     './assets/css/app.css',
     './assets/js/storage.js',
     './assets/js/parser.js',
