@@ -25,7 +25,7 @@ The goal is to help users archive their favorite Reddit posts with structure pre
 ## Key Features
 
 ### Reddit Saver (Chrome Extension)
-
+![image](https://github.com/WhiskeyCoder/Reddit-Archived/blob/main/images/extension.png)
 - Captures:
   - Post title, author, subreddit, score, URL
   - Body text and links
@@ -43,7 +43,7 @@ The goal is to help users archive their favorite Reddit posts with structure pre
   - Include/exclude images, videos, comments
 
 ### Reddit Viewer (Web App)
-
+![image](https://github.com/WhiskeyCoder/Reddit-Archived/blob/main/images/Dashboard.png)
 - Opens a folder of Markdown files
 - Parses post metadata and nested comments
 - Supports media rendering for:
