@@ -14,6 +14,7 @@ RedditViewer.App = (function () {
     let directoryHandle = null;
     let state = null;
     let duplicates = new Set();
+    let duplicateGroups = new Map();
     let directoryPrompted = false;
 
     const filters = {
@@ -32,6 +33,7 @@ RedditViewer.App = (function () {
         state = RedditViewer.Storage.loadState();
         RedditViewer.UI.applyTheme(state.theme);
         document.getElementById('themeToggle').textContent = state.theme === 'dark' ? '☀️ Light' : '🌙 Dark';
+        RedditViewer.UI.initSidebarPanels(state);
         bindEvents();
         configureMarked();
 
@@ -131,10 +133,10 @@ RedditViewer.App = (function () {
 
             if (e.key === 'j' || e.key === 'ArrowDown') {
                 e.preventDefault();
-                if (currentIndex < filteredPosts.length - 1) selectPost(currentIndex + 1);
+                if (currentIndex < filteredPosts.length - 1) selectPost(currentIndex + 1, { scrollIntoView: true });
             } else if (e.key === 'k' || e.key === 'ArrowUp') {
                 e.preventDefault();
-                if (currentIndex > 0) selectPost(currentIndex - 1);
+                if (currentIndex > 0) selectPost(currentIndex - 1, { scrollIntoView: true });
             } else if (e.key === 'f' && currentPost) {
                 toggleFavoriteCurrent();
             } else if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
@@ -189,13 +191,13 @@ RedditViewer.App = (function () {
                 setFolderStatus('Select your Reddit Saves folder');
                 return;
             }
-            const permission = await handle.queryPermission({ mode: 'read' });
+            const permission = await handle.queryPermission({ mode: 'readwrite' });
             if (permission === 'granted') {
                 directoryHandle = handle;
                 setFolderStatus(`Restored: ${handle.name} ✓`);
                 await loadDirectory();
             } else {
-                const request = await handle.requestPermission({ mode: 'read' });
+                const request = await handle.requestPermission({ mode: 'readwrite' });
                 if (request === 'granted') {
                     directoryHandle = handle;
                     setFolderStatus(`Restored: ${handle.name} ✓`);
@@ -212,7 +214,7 @@ RedditViewer.App = (function () {
 
     async function selectDirectory() {
         try {
-            const pickerOptions = { mode: 'read', startIn: directoryHandle || 'documents' };
+            const pickerOptions = { mode: 'readwrite', startIn: directoryHandle || 'documents' };
             directoryHandle = await window.showDirectoryPicker(pickerOptions);
             await RedditViewer.Storage.saveDirectoryHandle(directoryHandle);
             directoryPrompted = true;
@@ -271,6 +273,7 @@ RedditViewer.App = (function () {
             }
 
             duplicates = RedditViewer.Parser.findDuplicates(allPosts);
+            duplicateGroups = RedditViewer.Parser.groupDuplicates(allPosts);
             syncFiltersFromState();
             applyFilters();
             setFolderStatus(`Loaded ${allPosts.length} posts${duplicates.size ? ` (${duplicates.size} duplicate URLs)` : ''}`);
@@ -317,7 +320,7 @@ RedditViewer.App = (function () {
         RedditViewer.Storage.saveState(state);
 
         let posts = RedditViewer.Search.filterPosts(allPosts, filters, state, duplicates);
-        posts = RedditViewer.Search.sortPosts(posts, state.sortBy, state.sortDir);
+        posts = RedditViewer.Search.sortPosts(posts, state.sortBy, state.sortDir, duplicateGroups);
         filteredPosts = posts;
 
         RedditViewer.UI.buildSubredditList(allPosts, filters.subreddit, filterBySubreddit, clearSubredditFilter);
@@ -328,27 +331,41 @@ RedditViewer.App = (function () {
 
         const stats = RedditViewer.Stats.compute(allPosts);
         const statsPanel = document.getElementById('statsPanel');
-        if (statsPanel.style.display !== 'none') {
-            RedditViewer.UI.showStatsPanel(stats, {
-                onSubreddit: (sub) => filterBySubreddit(sub),
-                onPost: (filename) => {
-                    const idx = filteredPosts.findIndex((p) => p.filename === filename);
-                    if (idx >= 0) selectPost(idx);
-                }
-            });
+        const statsSection = document.getElementById('statsPanelSection');
+        const statsCallbacks = {
+            onSubreddit: (sub) => filterBySubreddit(sub),
+            onPost: (filename) => {
+                const idx = filteredPosts.findIndex((p) => p.filename === filename);
+                if (idx >= 0) selectPost(idx);
+            }
+        };
+
+        if (statsSection && !statsSection.classList.contains('sidebar-panel-hidden')) {
+            RedditViewer.UI.showStatsPanel(stats, statsCallbacks);
         } else {
             statsPanel.dataset.ready = 'true';
             statsPanel._stats = stats;
-            statsPanel._callbacks = {
-                onSubreddit: (sub) => filterBySubreddit(sub),
-                onPost: (filename) => {
-                    const idx = filteredPosts.findIndex((p) => p.filename === filename);
-                    if (idx >= 0) selectPost(idx);
-                }
-            };
+            statsPanel._callbacks = statsCallbacks;
         }
 
-        RedditViewer.UI.renderFileList(filteredPosts, state, duplicates, currentIndex, selectPost);
+        const subredditCount = new Set(allPosts.map((p) => p.subreddit || 'Unknown')).size;
+        RedditViewer.UI.updatePanelSummaries({
+            totalPosts: allPosts.length,
+            filteredCount: filteredPosts.length,
+            searchTerm: filters.searchTerm,
+            sortBy: state.sortBy,
+            sortDir: state.sortDir,
+            mediaFilter: filters.mediaFilter,
+            minVotes: filters.minVotes,
+            favoritesOnly: filters.showFavoritesOnly,
+            unreadOnly: filters.showUnreadOnly,
+            hideDuplicates: filters.hideDuplicates,
+            activeAuthor: filters.author,
+            activeSubreddit: filters.subreddit,
+            subredditCount
+        });
+
+        RedditViewer.UI.renderFileList(filteredPosts, state, duplicates, currentIndex, selectPost, deletePost);
 
         if (filteredPosts.length === 0) {
             document.getElementById('postContent').innerHTML = '';
@@ -370,7 +387,7 @@ RedditViewer.App = (function () {
         applyFilters();
     }
 
-    async function selectPost(index) {
+    async function selectPost(index, options = {}) {
         if (index < 0 || index >= filteredPosts.length) return;
         currentIndex = index;
         currentPost = filteredPosts[index];
@@ -378,12 +395,16 @@ RedditViewer.App = (function () {
         RedditViewer.Storage.markRead(postId, state);
 
         const contentDiv = await RedditViewer.UI.renderPost(
-            currentPost, state, filters.searchTerm
+            currentPost, state, filters.searchTerm, duplicateGroups
         );
 
         bindPostActions(contentDiv, postId);
-        RedditViewer.UI.renderFileList(filteredPosts, state, duplicates, currentIndex, selectPost);
-        RedditViewer.UI.scrollActiveItemIntoView();
+        RedditViewer.UI.updateFileListActiveState(currentIndex, postId);
+
+        if (options.scrollIntoView) {
+            RedditViewer.UI.scrollActiveItemIntoView();
+        }
+
         document.querySelector('.content')?.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -408,12 +429,94 @@ RedditViewer.App = (function () {
             RedditViewer.Storage.setTags(postId, tags, state);
             applyFilters();
         });
+        contentDiv.querySelector('#deleteDupBtn')?.addEventListener('click', () => {
+            if (currentPost) deletePost(currentPost);
+        });
+    }
+
+    async function ensureWritePermission() {
+        if (!directoryHandle) return false;
+        const opts = { mode: 'readwrite' };
+        let perm = await directoryHandle.queryPermission(opts);
+        if (perm === 'granted') return true;
+        perm = await directoryHandle.requestPermission(opts);
+        return perm === 'granted';
+    }
+
+    async function deletePostFile(post) {
+        const path = (post.filePath || post.filename).replace(/\\/g, '/');
+        const parts = path.split('/').filter(Boolean);
+        const fileName = parts.pop();
+        if (!fileName) throw new Error('Invalid file path');
+
+        let dir = directoryHandle;
+        for (const part of parts) {
+            dir = await dir.getDirectoryHandle(part);
+        }
+        await dir.removeEntry(fileName);
+    }
+
+    async function deletePost(post) {
+        if (!post?.fileHandle && !post?.filePath) {
+            alert('Cannot delete — file handle not available. Reload the folder.');
+            return;
+        }
+
+        const label = post.title || post.filename;
+        const siblings = RedditViewer.Parser.getDuplicateSiblings(post, duplicateGroups);
+        const siblingHint = siblings.length
+            ? `\n\n${siblings.length} other cop${siblings.length === 1 ? 'y' : 'ies'} of this post will remain.`
+            : '';
+
+        if (!confirm(`Delete this markdown file?\n\n"${label}"\n(${post.filePath || post.filename})${siblingHint}`)) {
+            return;
+        }
+
+        try {
+            if (!(await ensureWritePermission())) {
+                alert('Write permission is required to delete files. Please allow access when prompted.');
+                return;
+            }
+
+            await deletePostFile(post);
+
+            const postId = RedditViewer.Storage.getPostId(post);
+            const wasCurrent = currentPost === post;
+            const prevIndex = currentIndex;
+
+            allPosts = allPosts.filter((p) => p !== post);
+            delete state.readPosts[postId];
+            delete state.favorites[postId];
+            delete state.tags[postId];
+            RedditViewer.Storage.saveState(state);
+
+            duplicates = RedditViewer.Parser.findDuplicates(allPosts);
+            duplicateGroups = RedditViewer.Parser.groupDuplicates(allPosts);
+            applyFilters();
+
+            if (wasCurrent) {
+                if (filteredPosts.length > 0) {
+                    selectPost(Math.min(prevIndex, filteredPosts.length - 1));
+                } else {
+                    document.getElementById('postContent').innerHTML = '';
+                    document.getElementById('emptyState').style.display = 'block';
+                    currentPost = null;
+                    currentIndex = -1;
+                }
+            }
+
+            setFolderStatus(`Deleted ${post.filename}. ${allPosts.length} posts remaining.`);
+        } catch (err) {
+            console.error('Delete failed:', err);
+            alert('Could not delete file: ' + err.message);
+        }
     }
 
     function toggleFavoriteCurrent() {
         if (!currentPost) return;
         const postId = RedditViewer.Storage.getPostId(currentPost);
         RedditViewer.Storage.toggleFavorite(postId, state);
+        RedditViewer.UI.renderFileList(filteredPosts, state, duplicates, currentIndex, selectPost, deletePost);
         selectPost(currentIndex);
     }
 
@@ -459,12 +562,16 @@ RedditViewer.App = (function () {
     }
 
     function toggleStats() {
+        const section = document.getElementById('statsPanelSection');
         const panel = document.getElementById('statsPanel');
-        const showing = panel.style.display !== 'none';
+        const showing = section && !section.classList.contains('sidebar-panel-hidden');
+
         if (showing) {
-            panel.style.display = 'none';
+            section.classList.add('sidebar-panel-hidden');
         } else {
-            panel.style.display = 'block';
+            section.classList.remove('sidebar-panel-hidden');
+            RedditViewer.UI.setPanelExpanded('stats', true, state);
+
             if (panel._stats && panel._callbacks) {
                 RedditViewer.UI.showStatsPanel(panel._stats, panel._callbacks);
             } else if (allPosts.length) {
