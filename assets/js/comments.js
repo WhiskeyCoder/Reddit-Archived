@@ -1,14 +1,24 @@
 /**
- * Comment thread rendering — Reddit-style nested staggered layout.
+ * Comment thread rendering — capped indent, readable deep threads.
  */
 window.RedditViewer = window.RedditViewer || {};
 
 RedditViewer.Comments = (function () {
-    function renderSection(comments, opAuthor, searchTerm) {
+    const MAX_VISUAL_DEPTH = 4;
+    const INDENT_PX = 14;
+
+    function visualReplyPadding(parentDepth) {
+        if (parentDepth >= MAX_VISUAL_DEPTH) return 0;
+        return INDENT_PX;
+    }
+
+    async function renderSection(comments, opAuthor, searchTerm, mediaContext) {
         if (!comments?.length) return '';
 
         const total = RedditViewer.Parser.countAllComments(comments);
-        const threads = comments.map((c) => renderThread(c, opAuthor, searchTerm, 0)).join('');
+        const threads = await Promise.all(
+            comments.map((c) => renderThread(c, opAuthor, searchTerm, 0, mediaContext))
+        );
 
         return `
             <div class="comments-section">
@@ -19,33 +29,38 @@ RedditViewer.Comments = (function () {
                         <button class="btn-ghost btn-sm" id="expandAllBtn" type="button">Expand all</button>
                     </div>
                 </div>
-                <div class="comment-thread" id="commentThread">${threads}</div>
+                <div class="comment-thread" id="commentThread">${threads.join('')}</div>
             </div>
         `;
     }
 
-    function renderThread(comment, opAuthor, searchTerm, visualDepth) {
+    async function renderThread(comment, opAuthor, searchTerm, visualDepth, mediaContext) {
         const isOP = comment.author === opAuthor;
         const depth = comment.depth ?? visualDepth;
         const replyCount = countDirectAndNestedReplies(comment);
         const depthClass = depth > 0 ? `depth-${Math.min(depth, 12)}` : 'depth-0';
         const hasReplies = comment.replies?.length > 0;
+        const isCapped = depth >= MAX_VISUAL_DEPTH;
 
-        let bodyHtml = marked.parse(comment.body || '');
-        if (searchTerm) {
-            bodyHtml = RedditViewer.Search.highlightHtml(bodyHtml, searchTerm);
-        }
+        let bodyHtml = await renderCommentBody(comment.body, searchTerm, mediaContext);
 
         const opBadge = isOP ? '<span class="op-badge">OP</span>' : '';
         const collapseBtn = hasReplies
             ? `<button class="collapse-btn" type="button" aria-label="Toggle thread" title="Collapse thread">[−]</button>`
             : '';
-
-        const repliesHtml = hasReplies
-            ? `<div class="comment-replies">${comment.replies.map((r) =>
-                renderThread(r, opAuthor, searchTerm, depth + 1)
-            ).join('')}</div>`
+        const depthLabel = depth > MAX_VISUAL_DEPTH
+            ? `<span class="comment-depth-label" title="Nested reply level ${depth + 1}">↳ deep</span>`
             : '';
+
+        let repliesHtml = '';
+        if (hasReplies) {
+            const pad = visualReplyPadding(depth);
+            const borderStyle = pad > 0 ? '' : ' style="border-left-width:1px;opacity:0.6"';
+            const rendered = await Promise.all(
+                comment.replies.map((r) => renderThread(r, opAuthor, searchTerm, depth + 1, mediaContext))
+            );
+            repliesHtml = `<div class="comment-replies"${pad ? ` style="padding-left:${pad}px"` : borderStyle}>${rendered.join('')}</div>`;
+        }
 
         const collapsedHint = hasReplies
             ? `<div class="comment-collapsed-hint" hidden>
@@ -54,18 +69,41 @@ RedditViewer.Comments = (function () {
             : '';
 
         return `
-            <div class="comment ${depthClass}" data-depth="${depth}">
+            <div class="comment ${depthClass}${isCapped ? ' depth-capped' : ''}" data-depth="${depth}">
                 <div class="comment-meta">
                     ${collapseBtn}
                     <span class="comment-author ${isOP ? 'op' : ''}">${escapeHtml(comment.author)}</span>
                     ${opBadge}
-                    <span class="comment-vote">↕ ${comment.vote || 0}</span>
+                    ${depthLabel}
+                    <span class="comment-vote">⬆ ${comment.vote || 0}</span>
                 </div>
                 <div class="comment-body">${bodyHtml}</div>
                 ${repliesHtml}
                 ${collapsedHint}
             </div>
         `;
+    }
+
+    async function renderCommentBody(body, searchTerm, mediaContext) {
+        if (!body?.trim()) return '';
+
+        let html;
+        if (mediaContext?.directoryHandle) {
+            html = await RedditViewer.Media.processMediaInMarkdown(
+                body,
+                mediaContext.directoryHandle,
+                mediaContext.filename
+            );
+        } else {
+            html = marked.parse(body);
+            html = RedditViewer.Media.processVideoAndGifUrls(html);
+        }
+
+        if (searchTerm) {
+            html = RedditViewer.Search.highlightHtml(html, searchTerm);
+        }
+
+        return html;
     }
 
     function countDirectAndNestedReplies(comment) {
@@ -104,6 +142,15 @@ RedditViewer.Comments = (function () {
             if (expandBtn) {
                 setCommentCollapsed(expandBtn.closest('.comment'), false);
             }
+
+            const commentImg = e.target.closest('.comment-body img');
+            if (commentImg) {
+                e.preventDefault();
+                const imgs = Array.from(thread.querySelectorAll('.comment-body img'));
+                const idx = imgs.indexOf(commentImg);
+                const items = imgs.map((img) => ({ src: img.src, alt: img.alt || '' }));
+                RedditViewer.Gallery.openFullscreen(items, Math.max(0, idx));
+            }
         });
     }
 
@@ -125,5 +172,5 @@ RedditViewer.Comments = (function () {
         return div.innerHTML;
     }
 
-    return { renderSection, bindControls, countDirectAndNestedReplies };
+    return { renderSection, bindControls, countDirectAndNestedReplies, MAX_VISUAL_DEPTH };
 })();
