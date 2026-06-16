@@ -215,6 +215,14 @@ function htmlToMarkdown(root) {
       case 'a': {
         const href = node.getAttribute('href') || '';
         const text = processChildren(node).trim() || href;
+        if (!href) return text;
+        if (isVideoHost(href)) {
+          const resolved = resolveVideoUrl(href);
+          return `![${text || 'video'}](${resolved})\n\n`;
+        }
+        if (isImageUrl(href)) {
+          return `![${text || 'image'}](${href})\n\n`;
+        }
         return `[${text}](${href})`;
       }
       case 'strong':
@@ -246,10 +254,29 @@ function htmlToMarkdown(root) {
         return `- ${content}\n`;
       }
       case 'img': {
-        const src = node.getAttribute('src') || '';
+        const src =
+          node.getAttribute('src') ||
+          node.getAttribute('data-url') ||
+          node.getAttribute('data-src') ||
+          '';
         const alt = node.getAttribute('alt') || '';
         if (!src) return '';
         return `![${alt}](${src})\n\n`;
+      }
+      case 'figure': {
+        const figImg = node.querySelector('img');
+        if (figImg?.getAttribute('src')) {
+          const src = figImg.getAttribute('src');
+          const alt = figImg.getAttribute('alt') || '';
+          return `![${alt}](${src})\n\n`;
+        }
+        return processChildren(node);
+      }
+      case 'picture': {
+        const picImg = node.querySelector('img, source');
+        const src = picImg?.getAttribute('src') || picImg?.getAttribute('srcset')?.split(/[\s,]/)[0];
+        if (src) return `![image](${src})\n\n`;
+        return processChildren(node);
       }
       case 'video': {
         const src =
@@ -297,9 +324,11 @@ function buildCommentsMarkdown(totalComments) {
   const topLevel = allComments.filter((div) => getDepth(div) === 1);
 
   const parseCommentRecursively = (div, indent) => {
-    const contentDiv = div.querySelector('[id$="post-rtjson-content"]') || div;
-    const markdown = htmlToMarkdown(contentDiv);
     const wrapper = div.closest('shreddit-comment');
+    const contentDiv = div;
+    let markdown = htmlToMarkdown(contentDiv);
+    markdown = appendCommentMedia(markdown, wrapper, contentDiv);
+
     const authorAnchor = wrapper?.querySelector("a[href*='/user/']");
     const authorUrl = authorAnchor?.href || '#';
     const author = authorUrl.split('/').filter(Boolean).pop() || 'unknown';
@@ -314,13 +343,96 @@ function buildCommentsMarkdown(totalComments) {
       .filter(Boolean);
 
     for (const reply of replies) {
-      md += parseCommentRecursively(reply, indent +  1);
+      md += parseCommentRecursively(reply, indent + 1);
     }
     return md;
   };
 
   const body = topLevel.map((div) => parseCommentRecursively(div, 0)).join('\n');
   return `## Comments ${totalComments}\n\n${body}`.trim();
+}
+
+/**
+ * Append images, videos, and media links found in comment DOM but missing from rtjson HTML.
+ */
+function appendCommentMedia(markdown, wrapper, contentDiv) {
+  const media = collectMediaFromComment(wrapper, contentDiv);
+  if (media.length === 0) return markdown;
+
+  const extras = [];
+  for (const item of media) {
+    if (markdown.includes(item.url)) continue;
+    const key = item.url.replace(/\/DASH_\d+\.mp4$/i, '');
+    if (markdown.includes(key)) continue;
+
+    if (item.type === 'link') {
+      extras.push(`[${item.alt || item.url}](${item.url})`);
+    } else if (item.type === 'video' || item.type === 'embed') {
+      extras.push(`![${item.alt || 'video'}](${item.url})`);
+    } else {
+      extras.push(`![${item.alt || 'image'}](${item.url})`);
+    }
+  }
+
+  if (extras.length === 0) return markdown;
+  return `${markdown}\n\n${extras.join('\n\n')}`.trim();
+}
+
+function collectMediaFromComment(wrapper, contentDiv) {
+  /** @type {{ type: string; url: string; alt: string }[]} */
+  const items = [];
+  const seen = new Set();
+  const roots = [];
+
+  if (wrapper) roots.push(wrapper);
+  if (contentDiv && contentDiv !== wrapper) roots.push(contentDiv);
+
+  function add(type, url, alt) {
+    const normalized = normalizeMediaUrl(url);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    const resolved = type === 'video' || type === 'embed' ? resolveVideoUrl(normalized) : normalized;
+    items.push({ type, url: resolved, alt: alt || '' });
+  }
+
+  for (const root of roots) {
+    root.querySelectorAll('img[src], img[data-url], img[data-src]').forEach((img) => {
+      const src = img.getAttribute('src') || img.getAttribute('data-url') || img.getAttribute('data-src');
+      if (!src || src.includes('avatar') || src.includes('snoo')) return;
+      add('image', src, img.getAttribute('alt') || '');
+    });
+
+    root.querySelectorAll('video').forEach((video) => {
+      const src = video.currentSrc || video.src || video.querySelector('source')?.src;
+      if (src) add(classifyUrl(src), src, 'video');
+    });
+
+    root.querySelectorAll('shreddit-player-2, shreddit-player').forEach((player) => {
+      const src =
+        player.getAttribute('src') ||
+        player.getAttribute('poster') ||
+        player.querySelector('source')?.getAttribute('src');
+      if (src) add(classifyUrl(src), src, 'video');
+    });
+
+    root.querySelectorAll('a[href]').forEach((a) => {
+      const href = a.getAttribute('href');
+      if (!href || href.startsWith('/user/') || href.startsWith('/r/')) return;
+      const text = (a.textContent || '').trim();
+      if (isVideoHost(href)) add(classifyUrl(href), href, text || 'video');
+      else if (isImageUrl(href)) add('image', href, text || 'image');
+      else if (/^https?:\/\//i.test(href)) add('link', href, text || href);
+    });
+
+    root.querySelectorAll(
+      'figure img, [data-testid*="comment"] img, [slot="media"] img, .media-lightbox img, faceplate-img'
+    ).forEach((img) => {
+      const src = img.getAttribute('src') || img.getAttribute('data-url');
+      if (src) add('image', src, img.getAttribute('alt') || '');
+    });
+  }
+
+  return items;
 }
 
 function extractCommentScore(wrapper, commentRoot) {
