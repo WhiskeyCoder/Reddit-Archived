@@ -79,6 +79,10 @@ RedditViewer.Parser = (function () {
             post.body = bodyLines.join('\n').trim();
         }
 
+        if (!post.url) {
+            post.url = extractPostUrlFromContent(content);
+        }
+
         post.hasMedia = detectMedia(post.body);
         post.savedDate = extractDateFromFilename(filename);
         post.comments = parseCommentTree(commentLines, post.author);
@@ -457,19 +461,61 @@ RedditViewer.Parser = (function () {
         return count;
     }
 
-    function findDuplicates(posts) {
-        const byUrl = new Map();
-        const duplicates = new Set();
+    function extractPostUrlFromContent(content) {
+        const match = content.match(
+            /https?:\/\/(?:[a-z0-9-]+\.)*reddit\.com\/[^\s)\]"']*\/comments\/[a-z0-9]+[^\s)\]"']*/i
+        );
+        return match ? match[0].replace(/[),.]+$/, '') : '';
+    }
+
+    /** Canonical key for duplicate detection — uses Reddit post id when available. */
+    function getDuplicateKey(post) {
+        if (!post?.url) return null;
+        const idMatch = post.url.match(/\/comments\/([a-z0-9]+)/i);
+        if (idMatch) return `reddit:${idMatch[1].toLowerCase()}`;
+        try {
+            const u = new URL(post.url);
+            u.hostname = u.hostname.replace(/^old\./, 'www.');
+            u.hash = '';
+            let path = u.pathname.replace(/\/+$/, '');
+            return `${u.protocol}//${u.hostname}${path}`.toLowerCase();
+        } catch {
+            return post.url.trim().toLowerCase();
+        }
+    }
+
+    function groupDuplicates(posts) {
+        const byKey = new Map();
 
         for (const post of posts) {
-            if (!post.url) continue;
-            if (byUrl.has(post.url)) {
-                duplicates.add(post.url);
-            } else {
-                byUrl.set(post.url, post);
-            }
+            const key = getDuplicateKey(post);
+            if (!key) continue;
+            if (!byKey.has(key)) byKey.set(key, []);
+            byKey.get(key).push(post);
         }
-        return duplicates;
+
+        const groups = new Map();
+        for (const [key, list] of byKey) {
+            if (list.length > 1) groups.set(key, list);
+        }
+        return groups;
+    }
+
+    function findDuplicates(posts) {
+        return new Set(groupDuplicates(posts).keys());
+    }
+
+    function getDuplicateSiblings(post, groups) {
+        const key = getDuplicateKey(post);
+        if (!key || !groups.has(key)) return [];
+        return groups.get(key).filter((p) => p !== post);
+    }
+
+    function isDuplicatePost(post, duplicateKeys) {
+        const key = getDuplicateKey(post);
+        if (!key || !duplicateKeys) return false;
+        if (typeof duplicateKeys.has === 'function') return duplicateKeys.has(key);
+        return false;
     }
 
     function serializePost(post) {
@@ -485,6 +531,10 @@ RedditViewer.Parser = (function () {
         parseMarkdown,
         countAllComments,
         findDuplicates,
+        groupDuplicates,
+        getDuplicateSiblings,
+        getDuplicateKey,
+        isDuplicatePost,
         serializePost,
         detectMedia,
         getCacheVersion
