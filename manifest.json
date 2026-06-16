@@ -2,7 +2,7 @@
     "name": "Reddit Archive Viewer",
     "short_name": "Reddit Archive",
     "description": "Browse saved Reddit posts from Obsidian markdown archives",
-    "start_url": "./index.html",
+    "start_url": "./reddit-viewer.html",
     "display": "standalone",
     "background_color": "#030303",
     "theme_color": "#ff4500",
