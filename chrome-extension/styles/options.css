@@ -1,0 +1,12 @@
+body.options-page {
+  width: auto;
+  min-height: 100vh;
+}
+
+.options-app {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+}
+
+.info-panel strong { color: var(--accent); }

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reddit Saver — Settings</title>
+  <link rel="stylesheet" href="styles/popup.css" />
+  <link rel="stylesheet" href="styles/options.css" />
+</head>
+<body class="options-page">
+  <div class="app options-app">
+    <header class="header">
+      <div class="logo">R</div>
+      <div>
+        <h1>Reddit Saver Settings</h1>
+        <p class="subtitle">Output folder &amp; export defaults</p>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h3>Output folder</h3>
+      <p class="hint">
+        Choose where markdown files are saved. Point this at your Obsidian vault folder
+        (e.g. <code>Reddit Saves</code>) — the same folder you open in Reddit Archive Viewer.
+      </p>
+      <p id="currentFolder" class="folder-label">No folder selected</p>
+      <div class="row">
+        <button type="button" class="btn btn-primary" id="chooseFolderBtn">Choose output folder</button>
+        <button type="button" class="btn btn-ghost" id="clearFolderBtn">Clear</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>Filename</h3>
+      <label class="field">
+        <span>Pattern</span>
+        <select id="filenamePattern">
+          <option value="{title}">Title only</option>
+          <option value="{subreddit}_{title}">Subreddit + title</option>
+          <option value="{date}_{title}">Date + title</option>
+        </select>
+      </label>
+      <label class="toggle"><input type="checkbox" id="addDatePrefix" /> Add date prefix (YYYY-MM-DD_)</label>
+      <label class="toggle"><input type="checkbox" id="subfolderBySubreddit" /> Save into subfolder per subreddit</label>
+    </section>
+
+    <section class="panel">
+      <h3>Default includes</h3>
+      <label class="toggle"><input type="checkbox" id="includeImages" /> Images &amp; gallery</label>
+      <label class="toggle"><input type="checkbox" id="includeVideos" /> Videos &amp; embeds</label>
+      <label class="toggle"><input type="checkbox" id="includeComments" /> Comments</label>
+    </section>
+
+    <section class="panel info-panel">
+      <h3>Video support</h3>
+      <p class="hint">
+        Saved markdown uses URLs that Reddit Archive Viewer already understands:
+        <strong>v.redd.it</strong>, <strong>imgur gifv</strong>, <strong>redgifs</strong>, and direct MP4 links.
+        Videos play inline in the viewer without downloading separate files.
+      </p>
+    </section>
+
+    <p id="saveStatus" class="feedback hidden"></p>
+  </div>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

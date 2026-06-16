@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reddit Saver</title>
+  <link rel="stylesheet" href="styles/popup.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="header">
+      <div class="logo">R</div>
+      <div>
+        <h1>Reddit Saver</h1>
+        <p class="subtitle">Markdown for Archive Viewer</p>
+      </div>
+      <a href="options.html" target="_blank" class="icon-btn" title="Settings">⚙</a>
+    </header>
+
+    <div id="statusPanel" class="panel status-panel hidden">
+      <p id="statusMessage"></p>
+    </div>
+
+    <div id="mainPanel" class="hidden">
+      <section class="panel post-preview">
+        <h2 class="post-title">
+          <a id="postTitle" href="#" target="_blank">Loading…</a>
+        </h2>
+        <dl class="meta">
+          <div><dt>Subreddit</dt><dd><a id="postSubreddit" href="#" target="_blank"></a></dd></div>
+          <div><dt>Author</dt><dd><a id="postAuthor" href="#" target="_blank"></a></dd></div>
+          <div><dt>Votes</dt><dd id="postVotes">0</dd></div>
+          <div><dt>Comments</dt><dd id="postComments">0</dd></div>
+          <div><dt>Media</dt><dd id="postMedia">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel settings-section">
+        <h3>Include</h3>
+        <label class="toggle"><input type="checkbox" id="optImages" /> Images &amp; gallery</label>
+        <label class="toggle"><input type="checkbox" id="optVideos" /> Videos &amp; embeds</label>
+        <label class="toggle"><input type="checkbox" id="optComments" /> Comments</label>
+      </section>
+
+      <section class="panel output-section">
+        <h3>Output folder</h3>
+        <p id="folderLabel" class="folder-label">Not configured — set in Settings</p>
+        <button type="button" class="btn btn-ghost btn-sm" id="pickFolderBtn">Choose folder</button>
+      </section>
+
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="saveBtn">Save to folder</button>
+        <button type="button" class="btn" id="downloadBtn">Download</button>
+        <button type="button" class="btn" id="copyBtn">Copy</button>
+      </div>
+      <p id="actionFeedback" class="feedback hidden"></p>
+    </div>
+
+    <div id="loadingPanel" class="panel loading-panel">
+      <div class="spinner"></div>
+      <p>Reading post…</p>
+    </div>
+  </div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
