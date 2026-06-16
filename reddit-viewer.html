@@ -1,11 +1,170 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0;url=index.html">
-    <title>Redirecting…</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Browse your saved Reddit posts from Obsidian markdown archives">
+    <meta name="theme-color" content="#ff4500">
+    <title>Reddit Archive Viewer</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="assets/css/app.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
-    <p>Redirecting to <a href="index.html">Reddit Archive Viewer</a>…</p>
+    <div class="container">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>📁 Reddit Archive</h2>
+                <div class="sidebar-header-actions">
+                    <button type="button" class="btn-icon" id="expandAllPanelsBtn" title="Expand all sections">▾</button>
+                    <button type="button" class="btn-icon" id="collapseAllPanelsBtn" title="Collapse all sections">▴</button>
+                </div>
+            </div>
+
+            <div class="sidebar-panels" id="sidebarPanels">
+                <section class="sidebar-panel" data-panel="folder">
+                    <button type="button" class="sidebar-panel-toggle" aria-expanded="true" aria-controls="folderPanelBody">
+                        <span class="sidebar-panel-chevron" aria-hidden="true">▾</span>
+                        <span class="sidebar-panel-title">Folder</span>
+                        <span class="sidebar-panel-summary" id="folderPanelSummary"></span>
+                    </button>
+                    <div class="sidebar-panel-body" id="folderPanelBody">
+                        <div class="file-input-container" id="dropZone">
+                            <label>Select Reddit Saves Folder</label>
+                            <div class="folder-actions">
+                                <button class="btn" id="selectFolderBtn">Select Folder</button>
+                                <button class="btn-ghost" id="refreshBtn" title="Re-scan folder">↻ Refresh</button>
+                            </div>
+                            <div id="folderStatus"></div>
+                            <div class="target-hint">
+                                <strong>Target:</strong> your Reddit Saves folder
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="sidebar-panel" data-panel="search">
+                    <button type="button" class="sidebar-panel-toggle" aria-expanded="true" aria-controls="searchPanelBody">
+                        <span class="sidebar-panel-chevron" aria-hidden="true">▾</span>
+                        <span class="sidebar-panel-title">Search</span>
+                        <span class="sidebar-panel-summary" id="searchPanelSummary"></span>
+                    </button>
+                    <div class="sidebar-panel-body" id="searchPanelBody">
+                        <div class="search-box">
+                            <input type="text" id="searchInput" placeholder="Search posts & comments… (press /)" />
+                        </div>
+                    </div>
+                </section>
+
+                <section class="sidebar-panel is-collapsed" data-panel="filters">
+                    <button type="button" class="sidebar-panel-toggle" aria-expanded="false" aria-controls="filtersPanelBody">
+                        <span class="sidebar-panel-chevron" aria-hidden="true">▾</span>
+                        <span class="sidebar-panel-title">Sort & Filter</span>
+                        <span class="sidebar-panel-summary" id="filtersPanelSummary"></span>
+                    </button>
+                    <div class="sidebar-panel-body" id="filtersPanelBody">
+                        <div class="filter-section">
+                            <div class="filter-row">
+                                <select id="sortBy">
+                                    <option value="vote">Votes</option>
+                                    <option value="title">Title</option>
+                                    <option value="comments">Comments</option>
+                                    <option value="date">Date</option>
+                                    <option value="subreddit">Subreddit</option>
+                                </select>
+                                <select id="sortDir">
+                                    <option value="desc">Desc</option>
+                                    <option value="asc">Asc</option>
+                                </select>
+                            </div>
+                            <div class="filter-row">
+                                <select id="mediaFilter">
+                                    <option value="all">All posts</option>
+                                    <option value="media">With media</option>
+                                    <option value="text">Text only</option>
+                                </select>
+                            </div>
+                            <div class="filter-row">
+                                <label>Min votes: <span id="minVotesLabel">0</span></label>
+                                <input type="range" id="minVotes" min="0" max="500" value="0" step="5" style="flex:1" />
+                            </div>
+                            <div class="filter-row">
+                                <select id="authorFilter">
+                                    <option value="">All authors</option>
+                                </select>
+                            </div>
+                            <div class="filter-checks">
+                                <label><input type="checkbox" id="favoritesOnly" /> Favorites only</label>
+                                <label><input type="checkbox" id="unreadOnly" /> Unread only</label>
+                                <label><input type="checkbox" id="hideDuplicates" /> Hide duplicates</label>
+                            </div>
+                            <div class="kbd-hint">
+                                <kbd>j</kbd>/<kbd>k</kbd> navigate · <kbd>/</kbd> search · <kbd>f</kbd> favorite · <kbd>r</kbd> random
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="sidebar-panel sidebar-panel-hidden is-collapsed" data-panel="stats" id="statsPanelSection">
+                    <button type="button" class="sidebar-panel-toggle" aria-expanded="false" aria-controls="statsPanelBody">
+                        <span class="sidebar-panel-chevron" aria-hidden="true">▾</span>
+                        <span class="sidebar-panel-title">Stats</span>
+                        <span class="sidebar-panel-summary" id="statsPanelSummary"></span>
+                    </button>
+                    <div class="sidebar-panel-body" id="statsPanelBody">
+                        <div id="statsPanel"></div>
+                    </div>
+                </section>
+
+                <section class="sidebar-panel sidebar-panel-hidden is-collapsed" data-panel="subreddits" id="subredditPanelSection">
+                    <button type="button" class="sidebar-panel-toggle" aria-expanded="false" aria-controls="subredditPanelBody">
+                        <span class="sidebar-panel-chevron" aria-hidden="true">▾</span>
+                        <span class="sidebar-panel-title">Subreddits</span>
+                        <span class="sidebar-panel-summary" id="subredditPanelSummary"></span>
+                    </button>
+                    <div class="sidebar-panel-body" id="subredditPanelBody">
+                        <div id="subredditFilter">
+                            <div id="subredditList"></div>
+                            <button class="btn btn-sm" id="clearSubredditBtn" style="width:100%">Show All Posts</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="file-list-header">
+                <span>Posts</span>
+                <span class="file-list-count" id="postCountLabel"></span>
+            </div>
+            <ul class="file-list" id="fileList">
+                <li class="sidebar-empty">Select a folder to load posts</li>
+            </ul>
+        </aside>
+
+        <main class="content">
+            <div class="content-toolbar">
+                <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">☰</button>
+                <button class="btn-ghost" id="themeToggle">☀️ Light</button>
+                <button class="btn-ghost" id="statsToggle">📊 Stats</button>
+                <button class="btn-ghost" id="randomSidebarBtn">🎲 Random</button>
+            </div>
+
+            <div class="empty-state" id="emptyState">
+                <h3>Welcome to Reddit Archive Viewer</h3>
+                <p>Select your Reddit Saves folder to browse saved posts offline.</p>
+                <p style="margin-top:12px;font-size:13px">Features: nested comments, search, favorites, gallery, stats, and more.</p>
+            </div>
+            <div id="postContent"></div>
+        </main>
+    </div>
+
+    <script src="assets/js/storage.js"></script>
+    <script src="assets/js/parser.js"></script>
+    <script src="assets/js/media.js"></script>
+    <script src="assets/js/search.js"></script>
+    <script src="assets/js/stats.js"></script>
+    <script src="assets/js/gallery.js"></script>
+    <script src="assets/js/comments.js"></script>
+    <script src="assets/js/ui.js"></script>
+    <script src="assets/js/app.js"></script>
 </body>
 </html>
